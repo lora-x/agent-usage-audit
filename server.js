@@ -683,7 +683,7 @@ function isAutoReviewRow(row) {
 function aggregateAutoReviewRows(rows) {
   const first = rows[0] || {};
   const last = rows[rows.length - 1] || {};
-  const allModels = new Set(rows.map((row) => row.model).filter(Boolean));
+  const allModels = [...new Set(rows.map((row) => row.model).filter(Boolean))].sort();
   const dayLabel = first.day === last.day
     ? first.day
     : String(first.day) + " → " + String(last.day);
@@ -694,7 +694,7 @@ function aggregateAutoReviewRows(rows) {
     day: dayLabel,
     time: String(rows.length) + " sessions",
     sessionCount: rows.length,
-    model: allModels.size === 1 ? rows[0].model : "mixed",
+    model: allModels.join(", ") || "unknown",
     total: rows.reduce((sum, row) => sum + Number(row.total || 0), 0),
     credits: rows.reduce((sum, row) => sum + Number(row.credits || 0), 0),
     dollars: rows.reduce((sum, row) => sum + Number(row.dollars || 0), 0),
