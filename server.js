@@ -585,6 +585,22 @@ tr:hover td { background: #f9fbfd; }
 .pill { display: inline-flex; align-items: center; min-height: 24px; padding: 0 8px; border-radius: 999px; background: var(--surface-2); font-size: 12px; font-weight: 700; color: #475569; }
 .session-link { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-weight: 750; color: var(--accent); text-decoration: none; }
 .session-link:hover { text-decoration: underline; }
+.group-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-weight: 750;
+  padding: 0;
+}
+.group-toggle:hover { background: transparent; color: var(--accent-2); }
+.group-toggle-arrow { display: inline-block; width: 12px; text-align: center; color: var(--muted); }
+.row-group td { background: #f8fbff; font-weight: 650; }
+.row-child td { background: #fcfdff; }
+.row-child td:first-child { padding-left: 24px; }
 .events { display: grid; gap: 10px; }
 .loading-state {
   display: none;
@@ -631,6 +647,8 @@ if (params.get("start")) document.getElementById("start").value = params.get("st
 if (params.get("end")) document.getElementById("end").value = params.get("end");
 let allRows = [];
 let sortState = { key: "total", direction: "desc" };
+const expandedGroups = new Set();
+const AUTO_REVIEW_TITLE = "Auto-review/background task";
 
 function metric(label, value) {
   return '<div class="metric"><div class="label">' + label + '</div><div class="value">' + value + '</div></div>';
@@ -648,13 +666,63 @@ function renderSummary(t) {
   ].join("");
 }
 
-function sortedRows() {
-  return [...allRows].sort((a, b) => {
-    const left = Number(a[sortState.key] || 0);
-    const right = Number(b[sortState.key] || 0);
-    const diff = right - left;
-    return sortState.direction === "desc" ? diff : -diff;
-  });
+function rowSortValue(row) {
+  return Number(row[sortState.key] || 0);
+}
+
+function compareRows(a, b) {
+  const diff = rowSortValue(b) - rowSortValue(a);
+  if (diff !== 0) return sortState.direction === "desc" ? diff : -diff;
+  return (String(a.day) + "T" + String(a.time)).localeCompare(String(b.day) + "T" + String(b.time)) || String(a.id).localeCompare(String(b.id));
+}
+
+function isAutoReviewRow(row) {
+  return (row.title || "") === AUTO_REVIEW_TITLE;
+}
+
+function aggregateAutoReviewRows(rows) {
+  const first = rows[0] || {};
+  const last = rows[rows.length - 1] || {};
+  const allModels = new Set(rows.map((row) => row.model).filter(Boolean));
+  const allModelLabels = new Set(rows.map((row) => row.modelLabel).filter(Boolean));
+  const dayLabel = first.day === last.day
+    ? first.day
+    : String(first.day) + " → " + String(last.day);
+  return {
+    type: "group",
+    key: AUTO_REVIEW_TITLE,
+    title: AUTO_REVIEW_TITLE,
+    day: dayLabel,
+    time: String(rows.length) + " sessions",
+    sessionCount: rows.length,
+    model: allModels.size === 1 ? rows[0].model : "mixed",
+    modelLabel: allModelLabels.size === 1 ? rows[0].modelLabel : "Mixed",
+    total: rows.reduce((sum, row) => sum + Number(row.total || 0), 0),
+    credits: rows.reduce((sum, row) => sum + Number(row.credits || 0), 0),
+    dollars: rows.reduce((sum, row) => sum + Number(row.dollars || 0), 0),
+    children: rows,
+    cwd: rows[0]?.cwd || "",
+    id: "group:" + AUTO_REVIEW_TITLE,
+  };
+}
+
+function visibleTableItems() {
+  const rows = [...allRows].sort(compareRows);
+  const autoRows = rows.filter(isAutoReviewRow);
+  const regularRows = rows.filter((row) => !isAutoReviewRow(row));
+  const topLevel = regularRows.map((row) => ({ type: "row", row }));
+  if (!autoRows.length) return topLevel;
+  const group = aggregateAutoReviewRows(autoRows);
+  topLevel.push({ type: "group", row: group });
+  const sortedTopLevel = topLevel.sort((a, b) => compareRows(a.row, b.row));
+  const output = [];
+  for (const item of sortedTopLevel) {
+    output.push(item);
+    if (item.type === "group" && expandedGroups.has(item.row.key)) {
+      output.push(...autoRows.map((row) => ({ type: "child", row, parent: item.row.key })));
+    }
+  }
+  return output;
 }
 
 function renderSortIndicators() {
@@ -666,20 +734,34 @@ function renderSortIndicators() {
 
 function renderRows() {
   renderSortIndicators();
-  document.getElementById("rows").innerHTML = sortedRows().map((row) => {
-    const title = row.title || row.lastUser || row.firstUser || row.fileName;
-    const modelText = row.modelLabel || row.model || "";
-    return '<tr>' +
-      '<td>' + row.day + '</td>' +
-      '<td>' + row.time + '</td>' +
-      '<td><a class="session-link" target="_blank" href="/session/' + encodeURIComponent(row.id) + '">' + row.id.slice(0, 8) + '</a></td>' +
-      '<td>' + escapeHtml(title) + '<div class="muted">' + escapeHtml(row.cwd || "") + '</div></td>' +
-      '<td>' + escapeHtml(modelText) + '<div class="muted">' + escapeHtml(row.model || "") + '</div></td>' +
-      '<td class="num">' + fmt.format(row.total) + '</td>' +
-      '<td class="num">' + fmt.format(Math.round(row.credits * 100) / 100) + '</td>' +
-      '<td class="num">' + money.format(row.dollars) + '</td>' +
-      '</tr>';
-  }).join("");
+  document.getElementById("rows").innerHTML = visibleTableItems().map((item) => renderTableRow(item)).join("");
+}
+
+function renderTableRow(item) {
+  const row = item.row;
+  const title = row.title || row.lastUser || row.firstUser || row.fileName;
+  const modelText = row.modelLabel || row.model || "";
+  const isGroup = item.type === "group";
+  const isChild = item.type === "child";
+  const sessionCell = isGroup
+    ? '<button class="group-toggle" data-group-toggle="' + escapeHtml(row.key) + '" aria-expanded="' + (expandedGroups.has(row.key) ? "true" : "false") + '">' +
+      '<span class="group-toggle-arrow">' + (expandedGroups.has(row.key) ? "▾" : "▸") + '</span>' +
+      '<span>' + fmt.format(row.sessionCount) + ' sessions</span></button>'
+    : '<a class="session-link" target="_blank" href="/session/' + encodeURIComponent(row.id) + '">' + row.id.slice(0, 8) + '</a>';
+  const extraClass = isGroup ? " row-group" : isChild ? " row-child" : "";
+  const identifyHtml = isGroup
+    ? '<span>' + escapeHtml(title) + '</span><div class="muted">grouped</div>'
+    : escapeHtml(title);
+  return '<tr class="' + extraClass.trim() + '">' +
+    '<td>' + escapeHtml(row.day) + '</td>' +
+    '<td>' + escapeHtml(row.time) + '</td>' +
+    '<td>' + sessionCell + '</td>' +
+    '<td>' + identifyHtml + '<div class="muted">' + escapeHtml(row.cwd || "") + '</div></td>' +
+    '<td>' + escapeHtml(modelText) + '<div class="muted">' + escapeHtml(row.model || "") + '</div></td>' +
+    '<td class="num">' + fmt.format(row.total) + '</td>' +
+    '<td class="num">' + fmt.format(Math.round(row.credits * 100) / 100) + '</td>' +
+    '<td class="num">' + money.format(row.dollars) + '</td>' +
+    '</tr>';
 }
 
 function escapeHtml(value) {
@@ -708,6 +790,14 @@ document.querySelectorAll("[data-sort]").forEach((button) => {
     }
     renderRows();
   });
+});
+document.getElementById("rows").addEventListener("click", (event) => {
+  const button = event.target.closest("[data-group-toggle]");
+  if (!button) return;
+  const key = button.getAttribute("data-group-toggle");
+  if (expandedGroups.has(key)) expandedGroups.delete(key);
+  else expandedGroups.add(key);
+  renderRows();
 });
 loadSessions().catch((error) => {
   document.getElementById("summary").innerHTML = '<div class="metric"><div class="label">Error</div><div class="value">' + escapeHtml(error.message) + '</div></div>';
