@@ -13,7 +13,10 @@ const ARCHIVED_ROOT = path.join(CODEX_HOME, "archived_sessions");
 
 const RATES = {
   "gpt-5.5": { label: "GPT-5.5", input: 125, cached: 12.5, output: 750 },
+  "gpt-5.4": { label: "GPT-5.4", input: 62.5, cached: 6.25, output: 375 },
+  "gpt-5.4-mini": { label: "GPT-5.4-Mini", input: 18.75, cached: 1.875, output: 113 },
   "gpt-5.3-codex": { label: "GPT-5.3-Codex", input: 43.75, cached: 4.375, output: 350 },
+  "gpt-5.2": { label: "GPT-5.2", input: 43.75, cached: 4.375, output: 350 },
   "codex-auto-review": { label: "GPT-5.3-Codex review", input: 43.75, cached: 4.375, output: 350 },
   "codex-mini-latest": { label: "Codex Mini", input: 3.75, cached: 0.375, output: 15 },
 };
@@ -235,6 +238,7 @@ function findSession(id) {
 function totalsFor(rows) {
   const totals = {
     sessions: rows.length,
+    modelCount: 0,
     total: 0,
     input: 0,
     cached: 0,
@@ -244,11 +248,14 @@ function totalsFor(rows) {
     credits: 0,
     dollars: 0,
   };
+  const models = new Set();
   for (const row of rows) {
+    if (row.model) models.add(row.model);
     for (const key of ["total", "input", "cached", "uncached", "output", "reasoning", "credits", "dollars"]) {
       totals[key] += row[key] || 0;
     }
   }
+  totals.modelCount = models.size;
   return totals;
 }
 
@@ -421,6 +428,7 @@ function sessionPage(id) {
     <a class="ghost" href="/">Back to table</a>
   </header>
   <section id="sessionSummary" class="summary"></section>
+  <p id="rateCardNote" class="rate-card-note"></p>
   <section class="log-tools">
     <input id="filter" type="search" placeholder="Filter visible log text..." />
     <div class="toggle-group">
@@ -552,6 +560,13 @@ input[type="search"] { width: min(640px, 100%); }
   color: var(--accent-2);
 }
 .summary { display: grid; grid-template-columns: repeat(6, minmax(130px, 1fr)); gap: 10px; margin-bottom: 16px; }
+.rate-card-note {
+  margin: -4px 0 16px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.rate-card-note a { color: var(--accent); text-decoration: none; }
+.rate-card-note a:hover { text-decoration: underline; }
 .metric { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 12px; min-height: 76px; }
 .metric .label { color: var(--muted); font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
 .metric .value { margin-top: 8px; font-size: 20px; font-weight: 750; white-space: nowrap; }
@@ -624,6 +639,7 @@ function metric(label, value) {
 function renderSummary(t) {
   document.getElementById("summary").innerHTML = [
     metric("Sessions", fmt.format(t.sessions)),
+    metric("Models", fmt.format(t.modelCount || 0)),
     metric("Tokens", fmt.format(t.total)),
     metric("Uncached input", fmt.format(t.uncached)),
     metric("Cached input", fmt.format(t.cached)),
@@ -719,6 +735,7 @@ function renderSessionSummary(s) {
     metric("Est. dollars", money.format(s.dollars)),
     metric("Events", fmt.format(s.lines)),
   ].join("");
+  document.getElementById("rateCardNote").innerHTML = 'Pricing basis: <a href="https://help.openai.com/en/articles/20001106-codex-rate-card" target="_blank" rel="noreferrer">Codex rate card</a> as of May 24, 2026.';
 }
 function firstWords(text, limit) {
   const words = String(text || "").trim().split(/\s+/).filter(Boolean);
