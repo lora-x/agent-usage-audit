@@ -684,7 +684,6 @@ function aggregateAutoReviewRows(rows) {
   const first = rows[0] || {};
   const last = rows[rows.length - 1] || {};
   const allModels = new Set(rows.map((row) => row.model).filter(Boolean));
-  const allModelLabels = new Set(rows.map((row) => row.modelLabel).filter(Boolean));
   const dayLabel = first.day === last.day
     ? first.day
     : String(first.day) + " → " + String(last.day);
@@ -696,7 +695,6 @@ function aggregateAutoReviewRows(rows) {
     time: String(rows.length) + " sessions",
     sessionCount: rows.length,
     model: allModels.size === 1 ? rows[0].model : "mixed",
-    modelLabel: allModelLabels.size === 1 ? rows[0].modelLabel : "Mixed",
     total: rows.reduce((sum, row) => sum + Number(row.total || 0), 0),
     credits: rows.reduce((sum, row) => sum + Number(row.credits || 0), 0),
     dollars: rows.reduce((sum, row) => sum + Number(row.dollars || 0), 0),
@@ -740,7 +738,7 @@ function renderRows() {
 function renderTableRow(item) {
   const row = item.row;
   const title = row.title || row.lastUser || row.firstUser || row.fileName;
-  const modelText = row.modelLabel || row.model || "";
+  const modelText = row.model || "";
   const isGroup = item.type === "group";
   const isChild = item.type === "child";
   const sessionCell = isGroup
@@ -819,7 +817,7 @@ function metric(label, value) {
 function renderSessionSummary(s) {
   document.getElementById("sessionSummary").innerHTML = [
     metric("Date/time", s.day + " " + s.time),
-    metric("Model", escapeHtml(s.modelLabel || s.model || "unknown")),
+    metric("Model", escapeHtml(s.model || "unknown")),
     metric("Tokens", fmt.format(s.total)),
     metric("Credits", fmt.format(Math.round(s.credits * 100) / 100)),
     metric("Est. dollars", money.format(s.dollars)),
