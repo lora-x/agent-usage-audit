@@ -166,6 +166,7 @@ function parseJsonl(filePath, kind) {
   const uncached = Math.max(0, input - cached);
   const rate = RATES[model] || RATES["gpt-5.5"];
   const credits = (uncached * rate.input + cached * rate.cached + output * rate.output) / 1_000_000;
+  const effectiveModel = model || "gpt-5.5";
 
   return {
     id: meta?.id || sessionIdFromName(name),
@@ -175,7 +176,7 @@ function parseJsonl(filePath, kind) {
     file: filePath,
     fileName: name,
     cwd: meta?.cwd || "",
-    model,
+    model: effectiveModel,
     modelLabel: rate.label,
     title: summarizeTitle(lastUser || firstUser, meta?.cwd || "", model),
     firstUser: firstUser.slice(0, 300),
@@ -651,12 +652,13 @@ function renderRows() {
   renderSortIndicators();
   document.getElementById("rows").innerHTML = sortedRows().map((row) => {
     const title = row.title || row.lastUser || row.firstUser || row.fileName;
+    const modelText = row.modelLabel || row.model || "";
     return '<tr>' +
       '<td>' + row.day + '</td>' +
       '<td>' + row.time + '</td>' +
       '<td><a class="session-link" target="_blank" href="/session/' + encodeURIComponent(row.id) + '">' + row.id.slice(0, 8) + '</a></td>' +
       '<td>' + escapeHtml(title) + '<div class="muted">' + escapeHtml(row.cwd || "") + '</div></td>' +
-      '<td>' + escapeHtml(row.model || row.modelLabel) + '</td>' +
+      '<td>' + escapeHtml(modelText) + '<div class="muted">' + escapeHtml(row.model || "") + '</div></td>' +
       '<td class="num">' + fmt.format(row.total) + '</td>' +
       '<td class="num">' + fmt.format(Math.round(row.credits * 100) / 100) + '</td>' +
       '<td class="num">' + money.format(row.dollars) + '</td>' +
@@ -711,6 +713,7 @@ function metric(label, value) {
 function renderSessionSummary(s) {
   document.getElementById("sessionSummary").innerHTML = [
     metric("Date/time", s.day + " " + s.time),
+    metric("Model", escapeHtml(s.modelLabel || s.model || "unknown")),
     metric("Tokens", fmt.format(s.total)),
     metric("Credits", fmt.format(Math.round(s.credits * 100) / 100)),
     metric("Est. dollars", money.format(s.dollars)),

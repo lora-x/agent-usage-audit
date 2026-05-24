@@ -26,6 +26,7 @@ CODEX_HOME=/path/to/codex node server.js
 ```
 
 No AI, network service, package install, or dashboard server is required.
+The viewer also shows the model used for each session and prices tokens using the model-specific Codex rate card.
 
 ## Features
 
